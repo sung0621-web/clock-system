@@ -5,144 +5,160 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>員工打卡系統</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
-        .form-group { margin-bottom: 15px; }
-        input, select { padding: 10px; font-size: 16px; width: 80%; max-width: 300px; }
-        button { padding: 12px 24px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        #msg { margin-top: 15px; font-weight: bold; color: #333; }
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; background-color: #f8f9fa; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
+        .info-box { font-size: 18px; margin-bottom: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; font-weight: bold; color: #495057; }
+        .form-group { margin-bottom: 20px; }
+        select { padding: 12px; font-size: 16px; width: 100%; max-width: 250px; border-radius: 4px; border: 1px solid #ced4da; }
+        button { padding: 14px 28px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 250px; }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #msg { margin-top: 20px; font-weight: bold; color: #333; font-size: 15px; line-height: 1.5; }
     </style>
 </head>
 <body>
 
-    <h2>員工打卡系統</h2>
+    <div class="card">
+        <h2>🏢 公司打卡系統</h2>
+        
+        <!-- 顯示當前識別到的員工身分，不可修改 -->
+        正在識別身分...</div>
 
-    <div class="form-group">
-        <input type="text" id="empIdInput" placeholder="請輸入員工編號" value="EMP001">
+        <!-- 隱藏的輸入框，用來暫存網址抓到的工號並傳給後端 -->
+        <input type="hidden" id="empIdInput">
+
+        <div class="form-group">
+            <select id="actionSelect">
+                <option value="上班">☀️ 上班打卡</option>
+                <option value="下班">🌙 下班打卡</option>
+            </select>
+        </div>
+
+        <button id="clockInBtn" disabled>確認打卡（獲取 GPS）</button>
+        
+        <p id="msg">讀取網址參數中...</p>
     </div>
-
-    <div class="form-group">
-        <select id="actionSelect">
-            <option value="上班">上班</option>
-            <option value="下班">下班</option>
-        </select>
-    </div>
-
-    <button id="clockInBtn">確認打卡（獲取 GPS 位置）</button>
-    
-    <!-- 畫面上顯示狀態給員工看 -->
-    <p id="msg">請輸入工號並按下打卡</p>
 
     <script>
-    // 當按鈕被點擊時，才會觸發以下邏輯
-   // ====== 新增：網頁一載入時，自動檢查並填入上次儲存的員工編號 ======
-document.addEventListener("DOMContentLoaded", function() {
-    var savedEmpId = localStorage.getItem("saved_emp_id");
-    if (savedEmpId) {
-        document.getElementById('empIdInput').value = savedEmpId;
+    // 全域變數，用來儲存最終要發送的員工編號
+    var finalEmpId = "";
+
+    // 1. 網頁一載入，立刻從網址抓取 ?id=XXX 的參數
+    document.addEventListener("DOMContentLoaded", function() {
         var msgDiv = document.getElementById('msg');
-        msgDiv.innerText = "已自動為您帶入上次的員工編號 💾";
-        msgDiv.style.color = "blue";
-    }
-});
+        var identityDisplay = document.getElementById('identityDisplay');
+        var clockInBtn = document.getElementById('clockInBtn');
 
-// 當按鈕被點擊時，才會觸發以下邏輯
-document.getElementById('clockInBtn').addEventListener('click', function() {
-    var msgDiv = document.getElementById('msg');
-    var empId = document.getElementById('empIdInput').value.trim();
-    var action = document.getElementById('actionSelect').value;
+        // 解析網址參數
+        const urlParams = new URLSearchParams(window.location.search);
+        const empIdFromUrl = urlParams.get('id');
 
-    if (!empId) {
-        alert("請先輸入員工編號！");
-        return;
-    }
-
-    msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
-    msgDiv.style.color = "#333";
-
-    // 1. 先確認瀏覽器支援度
-    if (!navigator.geolocation) {
-        msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
-        msgDiv.style.color = "red";
-        sendPostToGAS(empId, action, "", ""); 
-        return;
-    }
-
-    var gpsOptions = {
-        enableHighAccuracy: true, 
-        timeout: 10000,           
-        maximumAge: 0             
-    };
-
-    // 2. 觸發定位要求
-    navigator.geolocation.getCurrentPosition(
-        function(position) {
-            var myLat = position.coords.latitude;
-            var myLng = position.coords.longitude;
+        if (empIdFromUrl && empIdFromUrl.trim() !== "") {
+            // 成功抓到工號
+            finalEmpId = empIdFromUrl.trim();
+            document.getElementById('empIdInput').value = finalEmpId;
             
-            msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
-            msgDiv.style.color = "green";
-
-            // ====== 新增：打卡成功後，將正確的員工編號儲存至瀏覽器本地空間 ======
-            localStorage.setItem("saved_emp_id", empId);
-
-            // 確保拿到經緯度了，才呼叫發送函式
-            sendPostToGAS(empId, action, myLat, myLng);
-        },
-        function(geoError) {
-            var errorType = "";
-            switch(geoError.code) {
-                case geoError.PERMISSION_DENIED:
-                    errorType = "員工拒絕了定位授權";
-                    break;
-                case geoError.POSITION_UNAVAILABLE:
-                    errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
-                    break;
-                case geoError.TIMEOUT:
-                    errorType = "定位超時（請至窗戶旁或收訊良好處再試一次）";
-                    break;
-                default:
-                    errorType = "未知定位錯誤";
-                    break;
-            }
-            
-            msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+            // 顯示在畫面上讓員工確認身分，並啟用打卡按鈕
+            identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
+            identityDisplay.style.color = "#007bff";
+            msgDiv.innerText = "請選擇打卡類型，並按下按鈕確認。";
+            clockInBtn.disabled = false; // 啟用按鈕
+        } else {
+            // 沒抓到工號（例如直接輸入主網址）
+            identityDisplay.innerText = "⚠️ 未識別身分";
+            identityDisplay.style.color = "red";
+            msgDiv.innerText = "❌ 錯誤：此網址無效。\n請向主管索取您的專屬打卡連結！";
             msgDiv.style.color = "red";
-            
-            sendPostToGAS(empId, action, "", ""); 
-        },
-        gpsOptions
-    );
-});
-
-// 負責發送 POST 給 Google Apps Script 的函式
-function sendPostToGAS(empId, action, lat, lng) {
-    // 🔴 請記得將下方網址替換成您自己的 GAS 正式部署網址（以 /exec 結尾的網址）
-    var gasUrl = "https://google.com";
-    
-    var payload = {
-        "emp_id": empId,
-        "action": action,
-        "latitude": lat,
-        "longitude": lng
-    };
-
-    fetch(gasUrl, {
-        method: "POST",
-        mode: "no-cors", 
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(function() {
-        alert("🎉 打卡請求已發送！請至試算表確認結果。");
-    })
-    .catch(function(err) {
-        alert("❌ 網路傳送失敗: " + err);
+            clockInBtn.disabled = true; // 禁用按鈕
+        }
     });
-}
 
+    // 2. 當按鈕被點擊時，觸發 GPS 定位
+    document.getElementById('clockInBtn').addEventListener('click', function() {
+        var msgDiv = document.getElementById('msg');
+        var action = document.getElementById('actionSelect').value;
+
+        msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
+        msgDiv.style.color = "#333";
+
+        if (!navigator.geolocation) {
+            msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
+            msgDiv.style.color = "red";
+            sendPostToGAS(finalEmpId, action, "", ""); 
+            return;
+        }
+
+        var gpsOptions = {
+            enableHighAccuracy: true, 
+            timeout: 10000,           
+            maximumAge: 0             
+        };
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                var myLat = position.coords.latitude;
+                var myLng = position.coords.longitude;
+                
+                msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
+                msgDiv.style.color = "green";
+
+                // 呼叫發送函式
+                sendPostToGAS(finalEmpId, action, myLat, myLng);
+            },
+            function(geoError) {
+                var errorType = "";
+                switch(geoError.code) {
+                    case geoError.PERMISSION_DENIED:
+                        errorType = "員工拒絕了定位授權";
+                        break;
+                    case geoError.POSITION_UNAVAILABLE:
+                        errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
+                        break;
+                    case geoError.TIMEOUT:
+                        errorType = "定位超時（請至收訊良好處再試一次）";
+                        break;
+                    default:
+                        errorType = "未知定位錯誤";
+                        break;
+                }
+                
+                msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+                msgDiv.style.color = "red";
+                
+                // 即使失敗也發送，讓後台知道原因
+                sendPostToGAS(finalEmpId, action, "", ""); 
+            },
+            gpsOptions
+        );
+    });
+
+    // 3. 負責發送 POST 給 Google Apps Script 的函式
+    function sendPostToGAS(empId, action, lat, lng) {
+        // 🔴 請將下方網址替換成您自己的 GAS 正式部署網址（以 /exec 結尾的網址）
+        var gasUrl = "https://google.com";
+        
+        var payload = {
+            "emp_id": empId,
+            "action": action,
+            "latitude": lat,
+            "longitude": lng
+        };
+
+        fetch(gasUrl, {
+            method: "POST",
+            mode: "no-cors", 
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(function() {
+            alert("🎉 打卡請求已發送！請至試算表確認結果。");
+        })
+        .catch(function(err) {
+            alert("❌ 網路傳送失敗: " + err);
+        });
+    }
     </script>
 </body>
 </html>
