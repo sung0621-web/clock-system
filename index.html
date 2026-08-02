@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宏甫企業社打卡系統</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; background-color: #f8f9fa; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
+        .info-box { font-size: 18px; margin-bottom: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; font-weight: bold; color: #495057; }
+        .form-group { margin-bottom: 20px; }
+        select { padding: 12px; font-size: 16px; width: 100%; max-width: 250px; border-radius: 4px; border: 1px solid #ced4da; }
+        button { padding: 14px 28px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 250px; }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #msg { margin-top: 20px; font-weight: bold; color: #333; font-size: 15px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🏢 宏甫企業社打卡系統</h2>
+        
+        <!-- 這行是核心關鍵：用來裝員工名字 -->
+        正在識別身分...</div>
+
+        <!-- 隱藏欄位，用來傳遞工號給後台 -->
+        <input type="hidden" id="empIdInput">
+
+        <div class="form-group">
+            <select id="actionSelect">
+                <option value="上班">☀️ 上班打卡</option>
+                <option value="下班">🌙 下班打卡</option>
+            </select>
+        </div>
+
+        <button id="clockInBtn" disabled>確認打卡（獲取 GPS）</button>
+        
+        <p id="msg">讀取網址參數中...</p>
+    </div>
+
+    <script>
+    var finalEmpId = "";
+
+    document.addEventListener("DOMContentLoaded", function() {
+        var msgDiv = document.getElementById('msg');
+        var identityDisplay = document.getElementById('identityDisplay');
+        var clockInBtn = document.getElementById('clockInBtn');
+
+        // 如果全新貼上依然彈出這個，代表您的瀏覽器絕對是在讀取別的舊檔案快取
+        if (!msgDiv || !identityDisplay || !clockInBtn) {
+            alert("網頁缺少必要標籤元件，請重貼完整的 index.html 程式碼！");
+            return;
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const empIdFromUrl = urlParams.get('id');
+
+        if (empIdFromUrl && empIdFromUrl.trim() !== "") {
+            finalEmpId = empIdFromUrl.trim();
+            var empInput = document.getElementById('empIdInput');
+            if (empInput) empInput.value = finalEmpId;
+            
+            identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
+            identityDisplay.style.color = "#007bff";
+            msgDiv.innerText = "請選擇打卡類型，並按下按鈕確認。";
+            clockInBtn.disabled = false; 
+        } else {
+            identityDisplay.innerText = "⚠️ 未識別身分";
+            identityDisplay.style.color = "red";
+            msgDiv.innerText = "❌ 錯誤：此網址無效。\n請向主管索取您的專屬打卡連結！";
+            msgDiv.style.color = "red";
+            clockInBtn.disabled = true; 
+        }
+    });
+
+    document.getElementById('clockInBtn').addEventListener('click', function() {
+        var msgDiv = document.getElementById('msg');
+        var action = document.getElementById('actionSelect').value;
+
+        msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
+        msgDiv.style.color = "#333";
+
+        if (!navigator.geolocation) {
+            msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
+            msgDiv.style.color = "red";
+            sendPostToGAS(finalEmpId, action, "", ""); 
+            return;
+        }
+
+        var gpsOptions = {
+            enableHighAccuracy: true, 
+            timeout: 10000,           
+            maximumAge: 0             
+        };
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                var myLat = position.coords.latitude;
+                var myLng = position.coords.longitude;
+                
+                msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
+                msgDiv.style.color = "green";
+                sendPostToGAS(finalEmpId, action, myLat, myLng);
+            },
+            function(geoError) {
+                var errorType = "";
+                switch(geoError.code) {
+                    case geoError.PERMISSION_DENIED:
+                        errorType = "員工拒絕了定位授權";
+                        break;
+                    case geoError.POSITION_UNAVAILABLE:
+                        errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
+                        break;
+                    case geoError.TIMEOUT:
+                        errorType = "定位超時";
+                        break;
+                    default:
+                        errorType = "未知定位錯誤";
+                        break;
+                }
+                msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+                msgDiv.style.color = "red";
+                sendPostToGAS(finalEmpId, action, "", ""); 
+            },
+            gpsOptions
+        );
+    });
+
+    function sendPostToGAS(empId, action, lat, lng) {
+        // 這邊已經幫您填入了第四張截圖中看到以 AKfycbW 開頭的正確後端 ID
+        var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
+        
+        var payload = {
+            "emp_id": empId,
+            "action": action,
+            "latitude": lat,
+            "longitude": lng
+        };
+
+        fetch(gasUrl, {
+            method: "POST",
+            mode: "no-cors", 
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        })
+        .then(function() {
+            alert("🎉 打卡請求已發送！請至試算表確認結果。");
+        })
+        .catch(function(err) {
+            alert("❌ 網路傳送失敗: " + err);
+        });
+    }
+    </script>
+</body>
+</html>
