@@ -172,7 +172,7 @@
 
     // 發送資料給 Google Apps Script 後台的通用函式
     function sendPostToGAS(empId, action, lat, lng) {
-        var gasUrl = "https://google.com";
+        var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
         var payload = { "emp_id": empId, "action": action, "latitude": lat, "longitude": lng };
         
         fetch(gasUrl, {
