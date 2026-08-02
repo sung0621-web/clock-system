@@ -21,10 +21,8 @@
     <div class="card">
         <h2>🏢 公司打卡系統</h2>
         
-        
         正在識別身分...</div>
 
-        <!-- 隱藏欄位，用來傳遞網址參數 -->
         <input type="hidden" id="empIdInput">
 
         <div class="form-group">
@@ -47,13 +45,12 @@
         var identityDisplay = document.getElementById('identityDisplay');
         var clockInBtn = document.getElementById('clockInBtn');
 
-        // 安全防線：如果找不到標籤，在網頁內部給予明確提示
+        // 如果您少複製了 HTML，這裡就會被攔截
         if (!msgDiv || !identityDisplay || !clockInBtn) {
             alert("網頁缺少必要標籤元件，請重貼完整的 index.html 程式碼！");
             return;
         }
 
-        // 解析網址參數
         const urlParams = new URLSearchParams(window.location.search);
         const empIdFromUrl = urlParams.get('id');
 
@@ -129,7 +126,7 @@
     });
 
     function sendPostToGAS(empId, action, lat, lng) {
-        // 🔴 請記得把下方「您的GAS部署ID」換成您本來的網址後再發布
+        // 🔴 請把下方「您的GAS部署ID」換成您本來的網址後再發布
         var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
         
         var payload = {
@@ -155,4 +152,3 @@
     </script>
 </body>
 </html>
-
