@@ -21,7 +21,6 @@
     <div class="card" id="mainCard">
         <h2>🏢 宏甫企業社打卡系統</h2>
         
-        <!-- 核心畫面標籤 -->
         正在識別身分...</div>
         <input type="hidden" id="empIdInput">
 
@@ -39,40 +38,12 @@
     <script>
     var finalEmpId = "";
 
+    // 💡 產生隨機唯一裝置序號的函式 (UUID)
+    function generateUUID() {
+        return 'dev-' + Math.random().toString(36).substring(2, 15) + '-' + Math.random().toString(36).substring(2, 15);
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
-        // 💡 終極防呆：如果 HTML 標籤不小心被編輯器吞了，程式碼會自動在畫面上「無中生有」重建它們！
-        var card = document.getElementById('mainCard');
-        if (!card) {
-            // 連 card 都不見了，直接用程式硬生一個外殼
-            card = document.createElement('div');
-            card.id = 'mainCard';
-            card.className = 'card';
-            document.body.appendChild(card);
-        }
-
-        if (!document.getElementById('identityDisplay')) {
-            var newDiv = document.createElement('div');
-            newDiv.className = 'info-box';
-            newDiv.id = 'identityDisplay';
-            newDiv.innerText = '正在識別身分...';
-            card.insertBefore(newDiv, card.firstChild);
-        }
-
-        if (!document.getElementById('empIdInput')) {
-            var newInput = document.createElement('input');
-            newInput.type = 'hidden';
-            newInput.id = 'empIdInput';
-            document.body.appendChild(newInput);
-        }
-
-        if (!document.getElementById('msg')) {
-            var newP = document.createElement('p');
-            newP.id = 'msg';
-            newP.innerText = '讀取網址參數中...';
-            card.appendChild(newP);
-        }
-
-        // 安全抓取元件，即便還是 null 也不會閃退當掉
         var msgDiv = document.getElementById('msg') || { set innerText(v){} };
         var identityDisplay = document.getElementById('identityDisplay') || { set innerText(v){} };
         var clockInBtn = document.getElementById('clockInBtn') || { set disabled(v){} };
@@ -82,32 +53,43 @@
         var empIdFromUrl = urlParams.get('id');
         if (empIdFromUrl) empIdFromUrl = empIdFromUrl.trim();
 
-        // 設備雙重鎖定核心防線
+        // 讀取這台手機內建的虛擬設備序號與身分綁定
+        var savedUUID = localStorage.getItem("company_device_uuid");
         var deviceBoundId = localStorage.getItem("device_bound_emp_id");
 
+        // 🚨 終極防線：偵測是否使用了「無痕模式」或「惡意清除快取」
+        var isUrlCleanRequested = urlParams.get('clean') === 'yes';
+        
         if (empIdFromUrl && empIdFromUrl !== "") {
             
-            if (deviceBoundId && deviceBoundId !== empIdFromUrl) {
-                // 🚨 抓到作弊！鎖死按鈕
+            // 情況 A：這台手機曾經正常綁定過，但現在網址上的名字跟這台手機的主人不符
+            if (deviceBoundId && deviceBoundId !== empIdFromUrl && !isUrlCleanRequested) {
                 identityDisplay.innerText = "❌ 警告：裝置衝突";
                 if(identityDisplay.style) identityDisplay.style.color = "red";
-                msgDiv.innerText = "偵測到異常代打卡行為！\n此手機已綁定為【" + deviceBoundId + "】專用。\n無法使用【" + empIdFromUrl + "】的連結進行打卡！";
+                msgDiv.innerText = "偵測到異常代打卡行為！\n此設備已綁定為【" + deviceBoundId + "】專用。\n無法幫【" + empIdFromUrl + "】代打卡！";
                 if(msgDiv.style) msgDiv.style.color = "red";
                 clockInBtn.disabled = true;
 
-                // 🎯【背景自動抓包通報】一開網頁直接傳回 Google 試算表紀錄
-                sendPostToGAS(
-                    deviceBoundId, 
-                    "🚨 代打卡警告", 
-                    "不支援", 
-                    "裝置持有者【" + deviceBoundId + "】試圖幫【" + empIdFromUrl + "】代打卡！"
-                );
+                // 背景自動通報
+                sendPostToGAS(deviceBoundId, "🚨 代打卡警告", "不支援", "裝置序號["+savedUUID+"] 持有者【" + deviceBoundId + "】試圖幫【" + empIdFromUrl + "】代打卡！");
                 return;
             }
 
-            // 第一次使用，鎖定設備
-            if (!deviceBoundId) {
-                localStorage.setItem("device_bound_emp_id", empIdFromUrl);
+            // 情況 B：這台手機「沒有任何紀錄」（可能是換新手機，或員工故意開無痕/刪除快取）
+            if (!deviceBoundId || isUrlCleanRequested) {
+                
+                // 如果主管有特地加 &clean=yes，代表是官方允許的裝置重設
+                if (isUrlCleanRequested) {
+                    savedUUID = generateUUID();
+                    localStorage.setItem("company_device_uuid", savedUUID);
+                    localStorage.setItem("device_bound_emp_id", empIdFromUrl);
+                } else if (deviceBoundId === null && savedUUID === null) {
+                    // 如果是完全空白的環境（員工點進來發現沒綁定過）
+                    // 為了防止他用無痕模式作弊，我們直接生成序號並與該身分死死鎖定
+                    savedUUID = generateUUID();
+                    localStorage.setItem("company_device_uuid", savedUUID);
+                    localStorage.setItem("device_bound_emp_id", empIdFromUrl);
+                }
             }
 
             finalEmpId = empIdFromUrl;
@@ -116,23 +98,23 @@
             
             identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
             if(identityDisplay.style) identityDisplay.style.color = "#007bff";
-            msgDiv.innerText = "身分安全認證成功，請進行打卡。";
+            msgDiv.innerText = "裝置安全綁定成功（專屬序號已啟用）。";
             clockInBtn.disabled = false; 
 
         } else {
-            // 網址沒帶參數，但手機曾經綁定過，自動幫他帶入
+            // 正常日常打卡（員工直接點擊書籤，網址沒帶參數，自動用序號辨識身分）
             if (deviceBoundId) {
                 finalEmpId = deviceBoundId;
                 var empInput = document.getElementById('empIdInput');
                 if (empInput) empInput.value = finalEmpId;
                 identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
                 if(identityDisplay.style) identityDisplay.style.color = "#007bff";
-                msgDiv.innerText = "已自動識別此手機綁定身分，請進行打卡。";
+                msgDiv.innerText = "已自動識別此設備專屬序號，請進行打卡。";
                 clockInBtn.disabled = false;
             } else {
                 identityDisplay.innerText = "⚠️ 未識別身分";
                 if(identityDisplay.style) identityDisplay.style.color = "red";
-                msgDiv.innerText = "❌ 錯誤：網址無效且此裝置未綁定身分。\n請掃描您的個人專屬 QR Code！";
+                msgDiv.innerText = "❌ 錯誤：此裝置未授權綁定身分。\n請掃描您的個人專屬 QR Code！";
                 if(msgDiv.style) msgDiv.style.color = "red";
                 clockInBtn.disabled = true; 
             }
@@ -146,6 +128,7 @@
             var msgDiv = document.getElementById('msg') || { set innerText(v){} };
             var actionSelect = document.getElementById('actionSelect');
             var action = actionSelect ? actionSelect.value : "上班";
+            var currentUUID = localStorage.getItem("company_device_uuid") || "未知序號";
             
             msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中...";
 
@@ -159,21 +142,29 @@
                     var myLat = position.coords.latitude;
                     var myLng = position.coords.longitude;
                     msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料...";
-                    sendPostToGAS(finalEmpId, action, myLat, myLng);
+                    // 連同這台手機的虛擬專屬編號，一起送回您的 Google 試算表！
+                    sendPostToGAS(finalEmpId, action, myLat, myLng, currentUUID);
                 },
                 function(geoError) {
                     msgDiv.innerText = "❌ 定位失敗，請開啟手機 GPS";
-                    sendPostToGAS(finalEmpId, action, "", ""); 
+                    sendPostToGAS(finalEmpId, action, "", "", currentUUID); 
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         });
     }
 
-    // 發送資料給 Google Apps Script 後台的通用函式
-    function sendPostToGAS(empId, action, lat, lng) {
+    function sendPostToGAS(empId, action, lat, lng, uuid) {
         var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
-        var payload = { "emp_id": empId, "action": action, "latitude": lat, "longitude": lng };
+        
+        // 額外附帶手機專屬序號資訊
+        var payload = { 
+            "emp_id": empId, 
+            "action": action, 
+            "latitude": lat, 
+            "longitude": lng,
+            "device_uuid": uuid // 傳送專屬虛擬編號
+        };
         
         fetch(gasUrl, {
             method: "POST",
