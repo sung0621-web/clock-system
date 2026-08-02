@@ -35,102 +35,114 @@
 
     <script>
     // 當按鈕被點擊時，才會觸發以下邏輯
-    document.getElementById('clockInBtn').addEventListener('click', function() {
+   // ====== 新增：網頁一載入時，自動檢查並填入上次儲存的員工編號 ======
+document.addEventListener("DOMContentLoaded", function() {
+    var savedEmpId = localStorage.getItem("saved_emp_id");
+    if (savedEmpId) {
+        document.getElementById('empIdInput').value = savedEmpId;
         var msgDiv = document.getElementById('msg');
-        var empId = document.getElementById('empIdInput').value.trim();
-        var action = document.getElementById('actionSelect').value;
-
-        if (!empId) {
-            alert("請先輸入員工編號！");
-            return;
-        }
-
-        msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
-        msgDiv.style.color = "#333";
-
-        // 1. 先確認瀏覽器支援度
-        if (!navigator.geolocation) {
-            msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
-            msgDiv.style.color = "red";
-            sendPostToGAS(empId, action, "", ""); // 觸發後端未授權
-            return;
-        }
-
-        var gpsOptions = {
-            enableHighAccuracy: true, // 務必開啟，強制手機啟動精確 GPS 晶片
-            timeout: 10000,           // 給手機 10 秒時間定位
-            maximumAge: 0             // 抓取最新位置，不用舊快取
-        };
-
-        // 2. 觸發定位要求（此時瀏覽器才會彈出要求定位的提示）
-        navigator.geolocation.getCurrentPosition(
-            function(position) {
-                // 【成功定位】此處是「非同步」的，會等待手機真正拿到 GPS 數值才執行
-                var myLat = position.coords.latitude;
-                var myLng = position.coords.longitude;
-                
-                msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
-                msgDiv.style.color = "green";
-
-                // 確保拿到經緯度了，才呼叫發送函式
-                sendPostToGAS(empId, action, myLat, myLng);
-            },
-            function(geoError) {
-                // 【定位失敗】（包含使用者按拒絕、手機關閉 GPS、室內收不到訊號超時）
-                var errorType = "";
-                switch(geoError.code) {
-                    case geoError.PERMISSION_DENIED:
-                        errorType = "員工拒絕了定位授權";
-                        break;
-                    case geoError.POSITION_UNAVAILABLE:
-                        errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
-                        break;
-                    case geoError.TIMEOUT:
-                        errorType = "定位超時（請至窗戶旁或收訊良好處再試一次）";
-                        break;
-                    default:
-                        errorType = "未知定位錯誤";
-                        break;
-                }
-                
-                msgDiv.innerText = "❌ 打卡失敗：" + errorType;
-                msgDiv.style.color = "red";
-                
-                // 即使失敗，也發送空值，讓您的 GAS 後台能紀錄到「員工未授權」或定位失敗的原因
-                sendPostToGAS(empId, action, "", ""); 
-            },
-            gpsOptions
-        );
-    });
-
-    // 負責發送 POST 給 Google Apps Script 的函式
-    function sendPostToGAS(empId, action, lat, lng) {
-        // 🔴 請將下方網址替換成您自己的 GAS 正式部署網址（以 /exec 結尾的網址）
-        var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
-        
-        var payload = {
-            "emp_id": empId,
-            "action": action,
-            "latitude": lat,
-            "longitude": lng
-        };
-
-        // 使用 fetch 發送給您的 doPost(e)
-        fetch(gasUrl, {
-            method: "POST",
-            mode: "no-cors", // GAS 跨網域必須設定 no-cors
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(function() {
-            alert("🎉 打卡請求已發送！請至試算表確認結果。");
-        })
-        .catch(function(err) {
-            alert("❌ 網路傳送失敗: " + err);
-        });
+        msgDiv.innerText = "已自動為您帶入上次的員工編號 💾";
+        msgDiv.style.color = "blue";
     }
+});
+
+// 當按鈕被點擊時，才會觸發以下邏輯
+document.getElementById('clockInBtn').addEventListener('click', function() {
+    var msgDiv = document.getElementById('msg');
+    var empId = document.getElementById('empIdInput').value.trim();
+    var action = document.getElementById('actionSelect').value;
+
+    if (!empId) {
+        alert("請先輸入員工編號！");
+        return;
+    }
+
+    msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
+    msgDiv.style.color = "#333";
+
+    // 1. 先確認瀏覽器支援度
+    if (!navigator.geolocation) {
+        msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
+        msgDiv.style.color = "red";
+        sendPostToGAS(empId, action, "", ""); 
+        return;
+    }
+
+    var gpsOptions = {
+        enableHighAccuracy: true, 
+        timeout: 10000,           
+        maximumAge: 0             
+    };
+
+    // 2. 觸發定位要求
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            var myLat = position.coords.latitude;
+            var myLng = position.coords.longitude;
+            
+            msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
+            msgDiv.style.color = "green";
+
+            // ====== 新增：打卡成功後，將正確的員工編號儲存至瀏覽器本地空間 ======
+            localStorage.setItem("saved_emp_id", empId);
+
+            // 確保拿到經緯度了，才呼叫發送函式
+            sendPostToGAS(empId, action, myLat, myLng);
+        },
+        function(geoError) {
+            var errorType = "";
+            switch(geoError.code) {
+                case geoError.PERMISSION_DENIED:
+                    errorType = "員工拒絕了定位授權";
+                    break;
+                case geoError.POSITION_UNAVAILABLE:
+                    errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
+                    break;
+                case geoError.TIMEOUT:
+                    errorType = "定位超時（請至窗戶旁或收訊良好處再試一次）";
+                    break;
+                default:
+                    errorType = "未知定位錯誤";
+                    break;
+            }
+            
+            msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+            msgDiv.style.color = "red";
+            
+            sendPostToGAS(empId, action, "", ""); 
+        },
+        gpsOptions
+    );
+});
+
+// 負責發送 POST 給 Google Apps Script 的函式
+function sendPostToGAS(empId, action, lat, lng) {
+    // 🔴 請記得將下方網址替換成您自己的 GAS 正式部署網址（以 /exec 結尾的網址）
+    var gasUrl = "https://google.com";
+    
+    var payload = {
+        "emp_id": empId,
+        "action": action,
+        "latitude": lat,
+        "longitude": lng
+    };
+
+    fetch(gasUrl, {
+        method: "POST",
+        mode: "no-cors", 
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(function() {
+        alert("🎉 打卡請求已發送！請至試算表確認結果。");
+    })
+    .catch(function(err) {
+        alert("❌ 網路傳送失敗: " + err);
+    });
+}
+
     </script>
 </body>
 </html>
