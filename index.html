@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>雲端打卡系統</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+    input, button { padding: 10px; font-size: 16px; margin: 5px; }
+    button { cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 4px; }
+    button.off { background-color: #f44336; }
+    #result { margin-top: 20px; font-weight: bold; color: #333; white-space: pre-line; }
+  </style>
+</head>
+<body>
+
+  <h2>雲端打卡系統 (Google Sheets 後台)</h2>
+  
+  <label>員工編號：</label>
+  <input type="text" id="empId" placeholder="例如: A001"><br><br>
+  
+  <button onclick="clockIn('上班')">上班打卡</button>
+  <button onclick="clockIn('下班')" class="off">下班打卡</button>
+  
+  <p id="result"></p>
+
+  <script>
+    // 🔴 必須換成您在 Google Apps Script 點選「部署」後複製出來的專屬 URL 網址！
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
+
+    function clockIn(action) {
+      const emp_id = document.getElementById('empId').value.trim();
+      if (!emp_id) { alert('請先輸入員工編號！'); return; }
+
+      document.getElementById('result').style.color = "#333";
+      document.getElementById('result').innerText = "連線中，請稍候...";
+
+      // 💡 正確的傳送參數：使用 text/plain 並開啟 redirect: follow 繞過跨網域限制
+      fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify({ emp_id, action }),
+        redirect: "follow" 
+      })
+      .then(res => {
+        if(res.ok) {
+          const now = new Date().toLocaleString('zh-TW');
+          document.getElementById('result').style.color = "green";
+          document.getElementById('result').innerText = `🎉 打卡成功！\n員工：${emp_id}\n時間：${now}\n類型：${action}`;
+        } else {
+          throw new Error('伺服器回應錯誤');
+        }
+      })
+      .catch(err => {
+        document.getElementById('result').style.color = "red";
+        document.getElementById('result').innerText = "❌ 打卡失敗，請檢查網路或網址。";
+        console.error(err);
+      });
+    }
+  </script>
+</body>
+</html>
