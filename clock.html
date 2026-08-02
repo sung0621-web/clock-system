@@ -18,13 +18,12 @@
 </head>
 <body>
 
-    <div class="card">
+    <div class="card" id="mainCard">
         <h2>🏢 宏甫企業社打卡系統</h2>
         
-        <!-- 這行是核心關鍵：用來裝員工名字 -->
+        <!-- 如果編輯器又吞掉標籤，下方的 JavaScript 會在開網頁時用程式手動強行補上！ -->
         正在識別身分...</div>
 
-        <!-- 隱藏欄位，用來傳遞工號給後台 -->
         <input type="hidden" id="empIdInput">
 
         <div class="form-group">
@@ -42,17 +41,41 @@
     <script>
     var finalEmpId = "";
 
+    // 💡 終極相容：網頁載入時，如果發現標籤不見了，直接用程式碼原地「無中生有」生出來！
     document.addEventListener("DOMContentLoaded", function() {
-        var msgDiv = document.getElementById('msg');
-        var identityDisplay = document.getElementById('identityDisplay');
-        var clockInBtn = document.getElementById('clockInBtn');
-
-        // 如果全新貼上依然彈出這個，代表您的瀏覽器絕對是在讀取別的舊檔案快取
-        if (!msgDiv || !identityDisplay || !clockInBtn) {
-            alert("網頁缺少必要標籤元件，請重貼完整的 index.html 程式碼！");
-            return;
+        // 檢查如果沒有 identityDisplay，直接在卡片最前面塞一個進去
+        if (!document.getElementById('identityDisplay')) {
+            var newDiv = document.createElement('div');
+            newDiv.className = 'info-box';
+            newDiv.id = 'identityDisplay';
+            newDiv.innerText = '正在識別身分...';
+            var card = document.getElementById('mainCard');
+            if (card) card.insertBefore(newDiv, card.firstChild);
+        }
+        
+        // 檢查如果沒有隱藏輸入框，自動補上
+        if (!document.getElementById('empIdInput')) {
+            var newInput = document.createElement('input');
+            newInput.type = 'hidden';
+            newInput.id = 'empIdInput';
+            document.body.appendChild(newInput);
         }
 
+        // 檢查如果沒有提示文字，自動補上
+        if (!document.getElementById('msg')) {
+            var newP = document.createElement('p');
+            newP.id = 'msg';
+            newP.innerText = '讀取網址參數中...';
+            var card = document.getElementById('mainCard');
+            if (card) card.appendChild(newP);
+        }
+
+        // 徹底移除了會彈出「網頁缺少必要標籤元件」的警告視窗，改為在背景安全執行
+        var msgDiv = document.getElementById('msg') || { set innerText(v){} };
+        var identityDisplay = document.getElementById('identityDisplay') || { set innerText(v){} };
+        var clockInBtn = document.getElementById('clockInBtn') || { set disabled(v){} };
+
+        // 解析網址參數
         const urlParams = new URLSearchParams(window.location.search);
         const empIdFromUrl = urlParams.get('id');
 
@@ -62,81 +85,63 @@
             if (empInput) empInput.value = finalEmpId;
             
             identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
-            identityDisplay.style.color = "#007bff";
+            if(identityDisplay.style) identityDisplay.style.color = "#007bff";
             msgDiv.innerText = "請選擇打卡類型，並按下按鈕確認。";
             clockInBtn.disabled = false; 
         } else {
             identityDisplay.innerText = "⚠️ 未識別身分";
-            identityDisplay.style.color = "red";
+            if(identityDisplay.style) identityDisplay.style.color = "red";
             msgDiv.innerText = "❌ 錯誤：此網址無效。\n請向主管索取您的專屬打卡連結！";
-            msgDiv.style.color = "red";
+            if(msgDiv.style) msgDiv.style.color = "red";
             clockInBtn.disabled = true; 
         }
     });
 
-    document.getElementById('clockInBtn').addEventListener('click', function() {
-        var msgDiv = document.getElementById('msg');
-        var action = document.getElementById('actionSelect').value;
+    // 打卡按鈕點擊監聽
+    var btnElement = document.getElementById('clockInBtn');
+    if (btnElement) {
+        btnElement.addEventListener('click', function() {
+            var msgDiv = document.getElementById('msg') || { set innerText(v){} };
+            var actionSelect = document.getElementById('actionSelect');
+            var action = actionSelect ? actionSelect.value : "上班";
 
-        msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
-        msgDiv.style.color = "#333";
+            msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
+            if(msgDiv.style) msgDiv.style.color = "#333";
 
-        if (!navigator.geolocation) {
-            msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
-            msgDiv.style.color = "red";
-            sendPostToGAS(finalEmpId, action, "", ""); 
-            return;
-        }
-
-        var gpsOptions = {
-            enableHighAccuracy: true, 
-            timeout: 10000,           
-            maximumAge: 0             
-        };
-
-        navigator.geolocation.getCurrentPosition(
-            function(position) {
-                var myLat = position.coords.latitude;
-                var myLng = position.coords.longitude;
-                
-                msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
-                msgDiv.style.color = "green";
-                sendPostToGAS(finalEmpId, action, myLat, myLng);
-            },
-            function(geoError) {
-                var errorType = "";
-                switch(geoError.code) {
-                    case geoError.PERMISSION_DENIED:
-                        errorType = "員工拒絕了定位授權";
-                        break;
-                    case geoError.POSITION_UNAVAILABLE:
-                        errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
-                        break;
-                    case geoError.TIMEOUT:
-                        errorType = "定位超時";
-                        break;
-                    default:
-                        errorType = "未知定位錯誤";
-                        break;
-                }
-                msgDiv.innerText = "❌ 打卡失敗：" + errorType;
-                msgDiv.style.color = "red";
+            if (!navigator.geolocation) {
+                msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
+                if(msgDiv.style) msgDiv.style.color = "red";
                 sendPostToGAS(finalEmpId, action, "", ""); 
-            },
-            gpsOptions
-        );
-    });
+                return;
+            }
+
+            var gpsOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    var myLat = position.coords.latitude;
+                    var myLng = position.coords.longitude;
+                    msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
+                    if(msgDiv.style) msgDiv.style.color = "green";
+                    sendPostToGAS(finalEmpId, action, myLat, myLng);
+                },
+                function(geoError) {
+                    var errorType = "未知定位錯誤";
+                    if(geoError.code === 1) errorType = "員工拒絕了定位授權";
+                    if(geoError.code === 2) errorType = "無法取得位置資訊";
+                    if(geoError.code === 3) errorType = "定位超時";
+                    msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+                    if(msgDiv.style) msgDiv.style.color = "red";
+                    sendPostToGAS(finalEmpId, action, "", ""); 
+                },
+                gpsOptions
+            );
+        });
+    }
 
     function sendPostToGAS(empId, action, lat, lng) {
-        // 這邊已經幫您填入了第四張截圖中看到以 AKfycbW 開頭的正確後端 ID
         var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
-        
-        var payload = {
-            "emp_id": empId,
-            "action": action,
-            "latitude": lat,
-            "longitude": lng
-        };
+        var payload = { "emp_id": empId, "action": action, "latitude": lat, "longitude": lng };
 
         fetch(gasUrl, {
             method: "POST",
