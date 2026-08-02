@@ -1,62 +1,136 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>雲端打卡系統</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-    input, button { padding: 10px; font-size: 16px; margin: 5px; }
-    button { cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 4px; }
-    button.off { background-color: #f44336; }
-    #result { margin-top: 20px; font-weight: bold; color: #333; white-space: pre-line; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>員工打卡系統</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        input, select { padding: 10px; font-size: 16px; width: 80%; max-width: 300px; }
+        button { padding: 12px 24px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #msg { margin-top: 15px; font-weight: bold; color: #333; }
+    </style>
 </head>
 <body>
 
-  <h2>雲端打卡系統 (Google Sheets 後台)</h2>
-  
-  <label>員工編號：</label>
-  <input type="text" id="empId" placeholder="例如: A001"><br><br>
-  
-  <button onclick="clockIn('上班')">上班打卡</button>
-  <button onclick="clockIn('下班')" class="off">下班打卡</button>
-  
-  <p id="result"></p>
+    <h2>員工打卡系統</h2>
 
-  <script>
-    // 🔴 必須換成您在 Google Apps Script 點選「部署」後複製出來的專屬 URL 網址！
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
+    <div class="form-group">
+        <input type="text" id="empIdInput" placeholder="請輸入員工編號" value="EMP001">
+    </div>
 
-    function clockIn(action) {
-      const emp_id = document.getElementById('empId').value.trim();
-      if (!emp_id) { alert('請先輸入員工編號！'); return; }
+    <div class="form-group">
+        <select id="actionSelect">
+            <option value="上班">上班</option>
+            <option value="下班">下班</option>
+        </select>
+    </div>
 
-      document.getElementById('result').style.color = "#333";
-      document.getElementById('result').innerText = "連線中，請稍候...";
+    <button id="clockInBtn">確認打卡（獲取 GPS 位置）</button>
+    
+    <!-- 畫面上顯示狀態給員工看 -->
+    <p id="msg">請輸入工號並按下打卡</p>
 
-      // 💡 正確的傳送參數：使用 text/plain 並開啟 redirect: follow 繞過跨網域限制
-      fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify({ emp_id, action }),
-        redirect: "follow" 
-      })
-      .then(res => {
-        if(res.ok) {
-          const now = new Date().toLocaleString('zh-TW');
-          document.getElementById('result').style.color = "green";
-          document.getElementById('result').innerText = `🎉 打卡成功！\n員工：${emp_id}\n時間：${now}\n類型：${action}`;
-        } else {
-          throw new Error('伺服器回應錯誤');
+    <script>
+    // 當按鈕被點擊時，才會觸發以下邏輯
+    document.getElementById('clockInBtn').addEventListener('click', function() {
+        var msgDiv = document.getElementById('msg');
+        var empId = document.getElementById('empIdInput').value.trim();
+        var action = document.getElementById('actionSelect').value;
+
+        if (!empId) {
+            alert("請先輸入員工編號！");
+            return;
         }
-      })
-      .catch(err => {
-        document.getElementById('result').style.color = "red";
-        document.getElementById('result').innerText = "❌ 打卡失敗，請檢查網路或網址。";
-        console.error(err);
-      });
+
+        msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中，請稍候...";
+        msgDiv.style.color = "#333";
+
+        // 1. 先確認瀏覽器支援度
+        if (!navigator.geolocation) {
+            msgDiv.innerText = "❌ 失敗：此瀏覽器不支援 GPS 定位。";
+            msgDiv.style.color = "red";
+            sendPostToGAS(empId, action, "", ""); // 觸發後端未授權
+            return;
+        }
+
+        var gpsOptions = {
+            enableHighAccuracy: true, // 務必開啟，強制手機啟動精確 GPS 晶片
+            timeout: 10000,           // 給手機 10 秒時間定位
+            maximumAge: 0             // 抓取最新位置，不用舊快取
+        };
+
+        // 2. 觸發定位要求（此時瀏覽器才會彈出要求定位的提示）
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                // 【成功定位】此處是「非同步」的，會等待手機真正拿到 GPS 數值才執行
+                var myLat = position.coords.latitude;
+                var myLng = position.coords.longitude;
+                
+                msgDiv.innerText = "✅ 定位成功！正在傳送打卡資料至後台...";
+                msgDiv.style.color = "green";
+
+                // 確保拿到經緯度了，才呼叫發送函式
+                sendPostToGAS(empId, action, myLat, myLng);
+            },
+            function(geoError) {
+                // 【定位失敗】（包含使用者按拒絕、手機關閉 GPS、室內收不到訊號超時）
+                var errorType = "";
+                switch(geoError.code) {
+                    case geoError.PERMISSION_DENIED:
+                        errorType = "員工拒絕了定位授權";
+                        break;
+                    case geoError.POSITION_UNAVAILABLE:
+                        errorType = "無法取得位置資訊（請檢查手機是否開啟 GPS）";
+                        break;
+                    case geoError.TIMEOUT:
+                        errorType = "定位超時（請至窗戶旁或收訊良好處再試一次）";
+                        break;
+                    default:
+                        errorType = "未知定位錯誤";
+                        break;
+                }
+                
+                msgDiv.innerText = "❌ 打卡失敗：" + errorType;
+                msgDiv.style.color = "red";
+                
+                // 即使失敗，也發送空值，讓您的 GAS 後台能紀錄到「員工未授權」或定位失敗的原因
+                sendPostToGAS(empId, action, "", ""); 
+            },
+            gpsOptions
+        );
+    });
+
+    // 負責發送 POST 給 Google Apps Script 的函式
+    function sendPostToGAS(empId, action, lat, lng) {
+        // 🔴 請將下方網址替換成您自己的 GAS 正式部署網址（以 /exec 結尾的網址）
+        var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
+        
+        var payload = {
+            "emp_id": empId,
+            "action": action,
+            "latitude": lat,
+            "longitude": lng
+        };
+
+        // 使用 fetch 發送給您的 doPost(e)
+        fetch(gasUrl, {
+            method: "POST",
+            mode: "no-cors", // GAS 跨網域必須設定 no-cors
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(function() {
+            alert("🎉 打卡請求已發送！請至試算表確認結果。");
+        })
+        .catch(function(err) {
+            alert("❌ 網路傳送失敗: " + err);
+        });
     }
-  </script>
+    </script>
 </body>
 </html>
