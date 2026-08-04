@@ -10,20 +10,24 @@
         .info-box { font-size: 18px; margin-bottom: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; font-weight: bold; color: #495057; }
         .form-group { margin-bottom: 20px; }
         select { padding: 12px; font-size: 16px; width: 100%; max-width: 250px; border-radius: 4px; border: 1px solid #ced4da; background-color: #e9ecef; }
-        button { padding: 14px 28px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 250px; }
-        button:hover { background-color: #218838; }
-        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        button { padding: 14px 28px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 250px; margin-top: 10px; }
+        .btn-clock { background-color: #28a745; color: white; }
+        .btn-clock:hover { background-color: #218838; }
+        .btn-clock:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .btn-history { background-color: #007bff; color: white; }
+        .btn-history:hover { background-color: #0056b3; }
+        
         #msg { margin-top: 15px; font-weight: bold; color: #333; font-size: 15px; line-height: 1.5; }
 
         /* 📋 個人當月紀錄卡片樣式 */
-        .history-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 20px auto; text-align: left; }
+        .history-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 20px auto; text-align: left; display: none; }
         .history-title { font-weight: bold; font-size: 16px; color: #495057; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
         .history-list { list-style: none; padding: 0; margin: 0; font-size: 13px; color: #333; max-height: 350px; overflow-y: auto; }
         .history-item { padding: 10px 0; border-bottom: 1px solid #eee; }
         .history-item:last-child { border-bottom: none; }
         .tag-work { background-color: #28a745; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
         .tag-off { background-color: #17a2b8; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-        .refresh-btn { background-color: #6c757d; font-size: 12px; padding: 4px 8px; width: auto; border-radius: 4px; }
+        .close-btn { background-color: #6c757d; color: white; font-size: 12px; padding: 4px 8px; width: auto; border: none; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -41,24 +45,29 @@
             </select>
         </div>
 
-        <button id="clockInBtn" disabled>確認打卡（獲取 GPS）</button>
+        <button class="btn-clock" id="clockInBtn" disabled>確認打卡（獲取 GPS）</button>
+        
+        <!-- 💡 新增獨立的調閱紀錄按鈕 -->
+        <button class="btn-history" id="toggleHistoryBtn" style="display: none;" onclick="toggleHistory()">📅 調閱當月打卡紀錄</button>
+        
         <p id="msg">讀取網址參數中...</p>
     </div>
 
-    <!-- 📋 當月紀錄卡片 -->
-    <div class="history-card" id="historyBox" style="display: none;">
+    <!-- 📋 當月紀錄區塊（預設隱藏） -->
+    <div class="history-card" id="historyBox">
         <div class="history-title">
             <span id="historyTitleText">📅 本月打卡紀錄</span>
-            <button class="refresh-btn" onclick="fetchMyHistory()">🔄 重新整理</button>
+            <button class="close-btn" onclick="toggleHistory(false)">✕ 關閉</button>
         </div>
         <ul class="history-list" id="historyList">
-            <li class="history-item">載入中...</li>
+            <li class="history-item">點擊下方按鈕載入紀錄...</li>
         </ul>
     </div>
 
     <script>
     var finalEmpId = "";
     var gasUrl = "https://script.google.com/macros/s/AKfycbwBE0ecmn4G_yAAgVfy_SS97YTmPa2OM94nhxUOzWagVx_JpkaSZvWRAFEzHkoDrySW6w/exec";
+    var isHistoryLoaded = false;
 
     function generateUUID() {
         return 'dev-' + Math.random().toString(36).substring(2, 15) + '-' + Math.random().toString(36).substring(2, 15);
@@ -84,6 +93,7 @@
         var msgDiv = document.getElementById('msg');
         var identityDisplay = document.getElementById('identityDisplay');
         var clockInBtn = document.getElementById('clockInBtn');
+        var toggleHistoryBtn = document.getElementById('toggleHistoryBtn');
 
         const urlParams = new URLSearchParams(window.location.search);
         var empIdFromUrl = urlParams.get('id');
@@ -137,14 +147,31 @@
         msgDiv.innerText = "已根據時間自動為您選擇【" + currentAction + "】。";
         msgDiv.style.color = "#333";
         clockInBtn.disabled = false;
-
+        
+        // 顯示調閱紀錄按鈕（但不自動發送請求）
         if (finalEmpId) {
-            document.getElementById('historyBox').style.display = 'block';
-            fetchMyHistory();
+            toggleHistoryBtn.style.display = 'block';
         }
     });
 
-    // 💡 查詢個人「當月」打卡紀錄
+    // 💡 切換與請求「當月紀錄」
+    function toggleHistory(forceState) {
+        var historyBox = document.getElementById('historyBox');
+        
+        if (forceState === false) {
+            historyBox.style.display = 'none';
+            return;
+        }
+
+        if (historyBox.style.display === 'none' || historyBox.style.display === '') {
+            historyBox.style.display = 'block';
+            fetchMyHistory(); // 展開時才發送 API 請求
+        } else {
+            historyBox.style.display = 'none';
+        }
+    }
+
+    // 💡 僅在使用者按下按鈕時發送 API 請求
     function fetchMyHistory() {
         var historyList = document.getElementById('historyList');
         var historyTitleText = document.getElementById('historyTitleText');
@@ -202,11 +229,9 @@
                     msgDiv.innerText = "🎉 " + action + "打卡成功！資料已傳送。";
                     msgDiv.style.color = "#28a745";
                     
-                    // 打卡成功後自動重新整理列表
                     setTimeout(function() { 
                         btnElement.disabled = false; 
-                        fetchMyHistory();
-                    }, 2500);
+                    }, 2000);
                 },
                 function(geoError) {
                     msgDiv.innerText = "⚠️ 定位失敗，已送出無 GPS 紀錄打卡。";
@@ -215,8 +240,7 @@
                     
                     setTimeout(function() { 
                         btnElement.disabled = false; 
-                        fetchMyHistory();
-                    }, 2500);
+                    }, 2000);
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
