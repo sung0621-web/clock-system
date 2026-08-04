@@ -9,7 +9,7 @@
         .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
         .info-box { font-size: 18px; margin-bottom: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; font-weight: bold; color: #495057; }
         .form-group { margin-bottom: 20px; }
-        select { padding: 12px; font-size: 16px; width: 100%; max-width: 250px; border-radius: 4px; border: 1px solid #ced4da; }
+        select { padding: 12px; font-size: 16px; width: 100%; max-width: 250px; border-radius: 4px; border: 1px solid #ced4da; background-color: #e9ecef; }
         button { padding: 14px 28px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 250px; }
         button:hover { background-color: #218838; }
         button:disabled { background-color: #6c757d; cursor: not-allowed; }
@@ -21,14 +21,13 @@
     <div class="card" id="mainCard">
         <h2>🏢 宏甫企業社打卡系統</h2>
         
-        <!-- 修正點 1：補齊開頭標籤與 ID -->
         <div class="info-box" id="identityDisplay">正在識別身分...</div>
         <input type="hidden" id="empIdInput">
 
         <div class="form-group">
-            <select id="actionSelect">
-                <option value="上班">☀️ 上班打卡</option>
-                <option value="下班">🌙 下班打卡</option>
+            <select id="actionSelect" disabled>
+                <option value="上班">☀️ 上班打卡 (06:00-13:00)</option>
+                <option value="下班">🌙 下班打卡 (13:01-05:59)</option>
             </select>
         </div>
 
@@ -39,9 +38,26 @@
     <script>
     var finalEmpId = "";
 
-    // 💡 產生隨機唯一裝置序號的函式 (UUID)
     function generateUUID() {
         return 'dev-' + Math.random().toString(36).substring(2, 15) + '-' + Math.random().toString(36).substring(2, 15);
+    }
+
+    // 💡 自動判定：06:00~13:00 為上班，其餘時間 (13:01~05:59) 全數為下班
+    function autoDetectAction() {
+        var now = new Date();
+        var hours = now.getHours();
+        var minutes = now.getMinutes();
+        var timeValue = hours * 100 + minutes; // 格式化時間數字 (如 06:30 -> 630, 13:01 -> 1301)
+
+        var actionSelect = document.getElementById('actionSelect');
+        
+        if (timeValue >= 600 && timeValue <= 1300) {
+            actionSelect.value = "上班";
+            return "上班";
+        } else {
+            actionSelect.value = "下班";
+            return "下班";
+        }
     }
 
     document.addEventListener("DOMContentLoaded", function() {
@@ -49,95 +65,70 @@
         var identityDisplay = document.getElementById('identityDisplay');
         var clockInBtn = document.getElementById('clockInBtn');
 
-        // 解析網址上的參數
         const urlParams = new URLSearchParams(window.location.search);
         var empIdFromUrl = urlParams.get('id');
         if (empIdFromUrl) empIdFromUrl = empIdFromUrl.trim();
 
-        // 讀取這台手機內建的虛擬設備序號與身分綁定
         var savedUUID = localStorage.getItem("company_device_uuid");
         var deviceBoundId = localStorage.getItem("device_bound_emp_id");
-
-        // 🚨 偵測是否使用了「清除重設權限」參數
         var isUrlCleanRequested = urlParams.get('clean') === 'yes';
         
+        var currentAction = autoDetectAction();
+
         if (empIdFromUrl && empIdFromUrl !== "") {
-            
-            // 情況 A：這台手機曾經綁定過，但與網址上的名字不符（防代打卡）
             if (deviceBoundId && deviceBoundId !== empIdFromUrl && !isUrlCleanRequested) {
                 identityDisplay.innerText = "❌ 警告：裝置衝突";
                 identityDisplay.style.color = "red";
-                msgDiv.innerText = "偵測到異常代打卡行為！\n此設備已綁定為【" + deviceBoundId + "】專用。\n無法幫【" + empIdFromUrl + "】代打卡！";
+                msgDiv.innerText = "偵測到異常代打卡行為！\n此設備已綁定為【" + deviceBoundId + "】專用。";
                 msgDiv.style.color = "red";
                 clockInBtn.disabled = true;
 
-                // 修正點 2：補齊傳送給 GAS 的 5 個完整參數 (empId, action, lat, lng, uuid)
-                sendPostToGAS(
-                    deviceBoundId, 
-                    "🚨 代打卡警告", 
-                    "", 
-                    "", 
-                    "裝置序號[" + savedUUID + "] 持有者【" + deviceBoundId + "】試圖幫【" + empIdFromUrl + "】代打卡！"
-                );
+                sendPostToGAS(deviceBoundId, "🚨 代打卡警告", "", "", "裝置序號[" + savedUUID + "] 持有者【" + deviceBoundId + "】試圖幫【" + empIdFromUrl + "】代打卡！");
                 return;
             }
 
-            // 情況 B：全新裝置或主管允許的重設
             if (!deviceBoundId || isUrlCleanRequested) {
-                if (isUrlCleanRequested) {
-                    savedUUID = generateUUID();
-                    localStorage.setItem("company_device_uuid", savedUUID);
-                    localStorage.setItem("device_bound_emp_id", empIdFromUrl);
-                } else if (deviceBoundId === null) {
-                    savedUUID = savedUUID || generateUUID();
-                    localStorage.setItem("company_device_uuid", savedUUID);
-                    localStorage.setItem("device_bound_emp_id", empIdFromUrl);
-                }
+                savedUUID = generateUUID();
+                localStorage.setItem("company_device_uuid", savedUUID);
+                localStorage.setItem("device_bound_emp_id", empIdFromUrl);
             }
 
             finalEmpId = empIdFromUrl;
-            var empInput = document.getElementById('empIdInput');
-            if (empInput) empInput.value = finalEmpId;
-            
+            document.getElementById('empIdInput').value = finalEmpId;
             identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
             identityDisplay.style.color = "#007bff";
-            msgDiv.innerText = "裝置安全綁定成功（專屬序號已啟用）。";
-            msgDiv.style.color = "#333";
-            clockInBtn.disabled = false; 
 
         } else {
-            // 情況 C：無參數點入（透過捷徑/書籤打卡）
             if (deviceBoundId) {
                 finalEmpId = deviceBoundId;
-                var empInput = document.getElementById('empIdInput');
-                if (empInput) empInput.value = finalEmpId;
+                document.getElementById('empIdInput').value = finalEmpId;
                 identityDisplay.innerText = "👤 當前員工： " + finalEmpId;
                 identityDisplay.style.color = "#007bff";
-                msgDiv.innerText = "已自動識別此設備專屬序號，請進行打卡。";
-                msgDiv.style.color = "#333";
-                clockInBtn.disabled = false;
             } else {
                 identityDisplay.innerText = "⚠️ 未識別身分";
                 identityDisplay.style.color = "red";
                 msgDiv.innerText = "❌ 錯誤：此裝置未授權綁定身分。\n請掃描您的個人專屬 QR Code！";
                 msgDiv.style.color = "red";
                 clockInBtn.disabled = true; 
+                return;
             }
         }
+
+        msgDiv.innerText = "已根據時間自動為您選擇【" + currentAction + "】。";
+        msgDiv.style.color = "#333";
+        clockInBtn.disabled = false;
     });
 
-    // 打卡按鈕點擊事件
     var btnElement = document.getElementById('clockInBtn');
     if (btnElement) {
         btnElement.addEventListener('click', function() {
             var msgDiv = document.getElementById('msg');
-            var actionSelect = document.getElementById('actionSelect');
-            var action = actionSelect ? actionSelect.value : "上班";
+            var action = autoDetectAction(); // 按下按鈕時重新判定一次
             var currentUUID = localStorage.getItem("company_device_uuid") || "未知序號";
-            
+
             msgDiv.innerText = "🔄 正在請求 GPS 定位權限並定位中...";
             msgDiv.style.color = "#333";
-            btnElement.disabled = true; // 防止重複點擊
+            btnElement.disabled = true;
 
             if (!navigator.geolocation) {
                 msgDiv.innerText = "❌ 瀏覽器不支援 GPS 定位。";
@@ -153,9 +144,9 @@
                     
                     sendPostToGAS(finalEmpId, action, myLat, myLng, currentUUID);
                     
-                    msgDiv.innerText = "🎉 打卡成功！資料已傳送。";
+                    msgDiv.innerText = "🎉 " + action + "打卡成功！資料已傳送。";
                     msgDiv.style.color = "#28a745";
-                    setTimeout(function() { btnElement.disabled = false; }, 3000); // 3 秒後解鎖按鈕
+                    setTimeout(function() { btnElement.disabled = false; }, 3000);
                 },
                 function(geoError) {
                     msgDiv.innerText = "⚠️ 定位失敗，已送出無 GPS 紀錄打卡。";
